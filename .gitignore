@@ -1,0 +1,9 @@
+# Build folders
+obj/
+bin/
+
+# vscode settings
+.vscode
+
+# 
+
