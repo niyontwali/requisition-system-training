@@ -11,6 +11,6 @@ public class Material : BaseEntity
     [StringLength(500, ErrorMessage = "Description name should not exceed 500 characters")]
     public string? Description { get; set; }
 
-    public required double Unit { get; set; }
+    public required string Unit { get; set; }
 }
 
