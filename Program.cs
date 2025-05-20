@@ -1,8 +1,14 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using RequisitionSystem.Data;
 
 // creation of a builder object
 var builder = WebApplication.CreateBuilder(args);
+
+// Get your variable keys from app settings
+var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 
 /**********************************************
 Configuring services
@@ -41,13 +47,32 @@ builder.Services.AddSwaggerGen();
 
     => check on lambda functions (Assignment)
 **********************************************************************/
-builder.Services.AddDbContext<ApplicationDbContext>(options => 
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("DefaultConnection"),
         sqlOptions => sqlOptions.EnableRetryOnFailure()
     )
 );
 
+/*********************************************************************
+5. Modification of the default Authentication Service
+************************************************************************/
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            // all your option below
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtSettings["Issuer"],
+            ValidAudience = jwtSettings["Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]!)
+            )
+        };
+    });
 /*********************************************************************
 5. Handle cors. This adds CORA (Cross-Orgin Resource Sharing)
 ************************************************************************/
