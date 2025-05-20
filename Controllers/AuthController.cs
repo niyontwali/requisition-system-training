@@ -8,7 +8,7 @@ namespace RequisitionSystem.Controllers;
 [Route("api/auth")]
 public class AuthController : ControllerBase {
     // constructor
-    public AuthController (ApplicationDbContext dbContext ): base(dbContext) {
+    public AuthController (ApplicationDbContext dbContext ) {
 
     }
 
