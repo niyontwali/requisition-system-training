@@ -17,9 +17,7 @@ public class AuthController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly IPasswordHasher<User> _passwordHasher;
-
     private readonly IConfiguration _config;
-
 
     // constructor
     public AuthController(ApplicationDbContext dbContext, IConfiguration config)
@@ -39,13 +37,13 @@ public class AuthController : ControllerBase
 
         if (userExists)
         {
-            return BadRequest(new { ok = false, message = "User alread exists" });
+            return BadRequest(new { ok = false, message = "User already exists" });
         }
         // step 2: - Validate the role given the user if it exists
         bool roleExists = await _dbContext.Roles.AnyAsync(role => role.Id == request.RoleId);
         if (!roleExists)
         {
-            return BadRequest(new { ok = false, message = "Role does not exists" });
+            return BadRequest(new { ok = false, message = "Role does not exist" });
         }
 
         // step 3 - Creating our user
@@ -65,7 +63,7 @@ public class AuthController : ControllerBase
         // Step 6: Save the changes 
         await _dbContext.SaveChangesAsync();
 
-        // step 7: Return a meaningfull message
+        // step 7: Return a meaningful message
         return StatusCode(201, new { ok = true, message = "User registered successfully" });
     }
 
@@ -92,26 +90,28 @@ public class AuthController : ControllerBase
         // step 3: Generate Token 
         string access_token = GenerateToken(user);
 
-        return Ok(new { access_token });
+        return Ok(new { ok = true, access_token });
     }
 
     private string GenerateToken(User user)
     {
-        // step 1: Payload to be store in the token
+        // step 1: Payload to be stored in the token
         var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Name,  user.FullName),
+            new Claim(ClaimTypes.Name, user.FullName),
+            new Claim(ClaimTypes.Email, user.Email)
         };
 
-        // Step 2: Retrieving the secret key from app setttings
+        // Step 2: Retrieve the secret key from app settings
         var key = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(_config["JwtSettings:SecretKey"]!)
             );
-        // step 3: Configuring our token's encryption
-        var creds = new SigningCredentials(key, SecurityAlgorithms.Aes256CbcHmacSha512);
 
-        // step 4: Assigning a token to the user
+        // Step 3: Configure token's signing credentials - Use HMACSHA256 instead of Aes256CbcHmacSha512
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        // step 4: Assign a token to the user
         var token = new JwtSecurityToken(
             issuer: _config["JwtSettings:Issuer"],
             audience: _config["JwtSettings:Audience"],

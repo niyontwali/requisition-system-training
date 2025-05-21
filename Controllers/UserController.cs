@@ -13,7 +13,7 @@ public class UserController(ApplicationDbContext dbContext) : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext = dbContext;
 
-    [Authorize]
+ 
     // Get Users
     [HttpGet]
     public async Task<IActionResult> GetUsers()
@@ -32,7 +32,7 @@ public class UserController(ApplicationDbContext dbContext) : ControllerBase
         if (user is null) return NotFound(new { ok = false, message = "User not found" });
    
 
-        return NotFound(new { ok = true, data = user });
+        return Ok(new { ok = true, data = user });
     }
 
 }
