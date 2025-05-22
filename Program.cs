@@ -1,11 +1,13 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RequisitionSystem.Data;
+using RequisitionSystem.Policies;
 
 // creation of a builder object
 var builder = WebApplication.CreateBuilder(args);
@@ -110,31 +112,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ),
             ClockSkew = TimeSpan.Zero
         };
-
-        // Keep the same event handlers
-        options.Events = new JwtBearerEvents
-        {
-            OnAuthenticationFailed = context =>
-            {
-                return Task.CompletedTask;
-            },
-            OnTokenValidated = context =>
-            {
-                return Task.CompletedTask;
-            },
-            OnChallenge = async context =>
-            {
-                context.HandleResponse();
-                context.Response.StatusCode = 401;
-                context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync(JsonSerializer.Serialize(new
-                {
-                    ok = false,
-                    message = "Unauthorized: Please provide a token"
-                }));
-            }
-        };
     });
+
+/*********************************************************************
+6. Authorization Policies Configuration
+************************************************************************/
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("AdminOnly", policy => policy.Requirements.Add(new AdminPolicy()))
+    .AddPolicy("EmployeeAccess", policy => policy.Requirements.Add(new EmployeePolicy()));
+
+// Register the authorization handlers
+builder.Services.AddScoped<IAuthorizationHandler, AdminPolicyHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, EmployeePolicyHandler>();
+
+// Custom authorization middleware result handler
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, CustomAuthorizationMiddlewareResultHandler>();
+
 
 /*********************************************************************
 5. Handle cors. This adds CORA (Cross-Orgin Resource Sharing)
@@ -195,7 +188,7 @@ app.UseCors();
 // enable authentication middleware
 app.UseAuthentication();
 
-// enable authorization
+// enable authoriza tion
 app.UseAuthorization();
 
 // map the atrribute-routed controllers to the app

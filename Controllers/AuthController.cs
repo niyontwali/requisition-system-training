@@ -13,23 +13,14 @@ namespace RequisitionSystem.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController : ControllerBase
+public class AuthController(ApplicationDbContext dbContext, IConfiguration config) : ControllerBase
 {
-    private readonly ApplicationDbContext _dbContext;
-    private readonly IPasswordHasher<User> _passwordHasher;
-    private readonly IConfiguration _config;
+    private readonly ApplicationDbContext _dbContext = dbContext;
+    private readonly IPasswordHasher<User> _passwordHasher = new PasswordHasher<User>();
+    private readonly IConfiguration _config = config;
 
-    // constructor
-    public AuthController(ApplicationDbContext dbContext, IConfiguration config)
-    {
-        // assign the _dbContent
-        _dbContext = dbContext;
-        _passwordHasher = new PasswordHasher<User>();
-        _config = config;
-    }
-
-    // register method - api/auth/register
-    [HttpPost("register")]
+  // register method - api/auth/register
+  [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterDto request)
     {
         // step 1 - validate if the user already exists
@@ -72,7 +63,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login(LoginDto request)
     {
         // 1. Check the user email login in if it exists
-        var user = await _dbContext.Users.FirstOrDefaultAsync(user => user.Email == request.Email);
+        var user = await _dbContext.Users.Include(u => u.Role).FirstOrDefaultAsync(user => user.Email == request.Email);
 
         if (user is null)
         {
@@ -98,9 +89,11 @@ public class AuthController : ControllerBase
         // step 1: Payload to be stored in the token
         var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Name, user.FullName),
-            new Claim(ClaimTypes.Email, user.Email)
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.FullName),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Role, user.Role!.Name),
+
         };
 
         // Step 2: Retrieve the secret key from app settings

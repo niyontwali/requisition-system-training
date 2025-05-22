@@ -11,5 +11,7 @@ public class RequisitionRemark : BaseEntity
     public required string Content { get; set; }
 
     public required Guid AuthorId { get; set; }
+
+    public required User Author { get; set; }
 }
 

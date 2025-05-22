@@ -4,8 +4,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RequisitionSystem.Data;
-using RequisitionSystem.DTOs;
-using RequisitionSystem.Models;
 
 [ApiController]
 [Route("api/users")]
@@ -13,8 +11,9 @@ public class UserController(ApplicationDbContext dbContext) : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext = dbContext;
 
- 
+
     // Get Users
+    [Authorize(Policy = "AdminOnly")]
     [HttpGet]
     public async Task<IActionResult> GetUsers()
     {
@@ -30,7 +29,7 @@ public class UserController(ApplicationDbContext dbContext) : ControllerBase
         var user = await _dbContext.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id);
 
         if (user is null) return NotFound(new { ok = false, message = "User not found" });
-   
+
 
         return Ok(new { ok = true, data = user });
     }
