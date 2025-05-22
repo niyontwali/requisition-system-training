@@ -1,5 +1,6 @@
 namespace RequisitionSystem.Controllers;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RequisitionSystem.Data;
@@ -14,11 +15,13 @@ public class RequsitionsController(ApplicationDbContext dbContext) : ControllerB
 
     // Get Requisitions
     [HttpGet]
-    public async Task<IActionResult> GetRequisition()
+    public async Task<IActionResult> GetRequisitions()
     {
         var requisitions = await _dbContext.Requisitions
+      .Include(r => r.RequestedUser)
         .Include(r => r.RequisitionItems)
-        .FirstOrDefaultAsync();
+        .Include(r => r.RequisitionRemarks)
+        .ToListAsync();
 
         return Ok(new { ok = true, data = requisitions });
     }
@@ -42,6 +45,7 @@ public class RequsitionsController(ApplicationDbContext dbContext) : ControllerB
     }
 
     // Create Requisition
+    [Authorize]
     [HttpPost]
     public async Task<IActionResult> CreateRequisition(CreateRequisitionDt0 request)
     {

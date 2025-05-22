@@ -72,7 +72,9 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login(LoginDto request)
     {
         // 1. Check the user email login in if it exists
-        var user = await _dbContext.Users.FirstOrDefaultAsync(user => user.Email == request.Email);
+        var user = await _dbContext.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(user => user.Email == request.Email);
 
         if (user is null)
         {
@@ -98,9 +100,10 @@ public class AuthController : ControllerBase
         // step 1: Payload to be stored in the token
         var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Name, user.FullName),
-            new Claim(ClaimTypes.Email, user.Email)
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.FullName),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Role, user.Role!.Name)
         };
 
         // Step 2: Retrieve the secret key from app settings
