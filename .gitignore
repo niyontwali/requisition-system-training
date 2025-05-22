@@ -5,5 +5,5 @@ bin/
 # vscode settings
 .vscode
 
-# 
-
+# app-settings
+appsettings.json
