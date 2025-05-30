@@ -12,5 +12,9 @@ public class Material : BaseEntity
     public string? Description { get; set; }
 
     public required string Unit { get; set; }
+
+    [StringLength(100, ErrorMessage = "Barcode should not exceed 100 characters")]
+    public string? BarCode { get; set; }
+
 }
 

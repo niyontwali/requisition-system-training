@@ -6,21 +6,33 @@ using RequisitionSystem.Data;
 using RequisitionSystem.DTOs;
 using RequisitionSystem.Models;
 
+/*****************************************************************************
+ * MATERIALS CONTROLLER
+ * Handles CRUD operations for material resources
+ ****************************************************************************/
 [ApiController]
 [Route("api/materials")]
-public class MaterialsController(ApplicationDbContext dbContext) : ControllerBase
+public class MaterialsController(ApplicationDbContext dbContext, ILogger<MaterialsController> logger) : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext = dbContext;
+    private readonly ILogger<MaterialsController> _logger = logger;
 
-    // Get Materials
+    /*************************************************************************
+     * GET ALL MATERIALS - GET api/materials
+     * Retrieves a list of all materials
+     ************************************************************************/
     [HttpGet]
     public async Task<IActionResult> GetMaterials()
     {
         var materials = await _dbContext.Materials.ToListAsync();
+        _logger.LogInformation("Got all materials");
         return Ok(new { ok = true, data = materials });
     }
 
-    // Get a single material
+    /*************************************************************************
+     * GET SINGLE MATERIAL - GET api/materials/{id}
+     * Retrieves a specific material by ID
+     ************************************************************************/
     [HttpGet("{id}")]
     public async Task<IActionResult> GetMaterial(Guid id)
     {
@@ -34,11 +46,13 @@ public class MaterialsController(ApplicationDbContext dbContext) : ControllerBas
         return Ok(new { ok = true, data = material });
     }
 
-    // Create material
+    /*************************************************************************
+     * CREATE MATERIAL - POST api/materials
+     * Creates a new material record
+     ************************************************************************/
     [HttpPost]
     public async Task<IActionResult> CreateMaterial(CreateMaterialDto materialDto)
     {
-
         var newMaterial = new Material
         {
             Name = materialDto.Name,
@@ -52,6 +66,10 @@ public class MaterialsController(ApplicationDbContext dbContext) : ControllerBas
         return Ok(new { ok = true, message = "Material created successfully" });
     }
 
+    /*************************************************************************
+     * UPDATE MATERIAL - PUT api/materials/{id}
+     * Updates an existing material record
+     ************************************************************************/
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateMaterial(Guid id, UpdateMaterialDto materialDto)
     {
@@ -61,6 +79,9 @@ public class MaterialsController(ApplicationDbContext dbContext) : ControllerBas
             return NotFound(new { ok = false, message = $"Material with {id} not found" });
         }
 
+        /*********************************************************************
+         * Apply partial updates only for provided fields
+         ********************************************************************/
         if (!string.IsNullOrWhiteSpace(materialDto.Name))
         {
             material.Name = materialDto.Name;
@@ -70,17 +91,21 @@ public class MaterialsController(ApplicationDbContext dbContext) : ControllerBas
         {
             material.Description = materialDto.Description;
         }
+
         if (!string.IsNullOrWhiteSpace(materialDto.Unit))
         {
             material.Unit = materialDto.Unit;
         }
-
 
         await _dbContext.SaveChangesAsync();
 
         return Ok(new { ok = true, message = "Material updated successfully" });
     }
 
+    /*************************************************************************
+     * DELETE MATERIAL - DELETE api/materials/{id}
+     * Removes a material record
+     ************************************************************************/
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteMaterial(Guid id)
     {

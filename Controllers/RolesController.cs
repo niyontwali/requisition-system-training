@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RequisitionSystem.Data;
@@ -6,116 +7,178 @@ using RequisitionSystem.Models;
 
 namespace RequisitionSystem.Controllers;
 
+/*****************************************************************************
+ * ROLES CONTROLLER
+ * Handles all role management operations (CRUD) for the system
+ * All endpoints require Admin privileges
+ ****************************************************************************/
 [ApiController]
-[Route("api/roles")] // controller base route i.e api/Roles
+[Route("api/roles")]
 public class RolesController(ApplicationDbContext dbContext) : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext = dbContext;
 
-    // All methods for CRUD Operation
-    // get roles
+    /*************************************************************************
+     * GET ALL ROLES - GET api/roles
+     * Retrieves complete list of all roles in the system
+     * Access: Admin only
+     ************************************************************************/
+    [Authorize(Policy = "AdminOnly")]
     [HttpGet]
     public async Task<IActionResult> GetRoles()
     {
         var roles = await _dbContext.Roles.ToListAsync();
-
-        /*
-        Ok, NotFound
-        */
-        return Ok(new { ok = true, data = roles }); // ok == status code of 200
+        return Ok(new { ok = true, data = roles });
     }
 
-    // get a single role by id
+    /*************************************************************************
+     * GET SINGLE ROLE - GET api/roles/{id}
+     * Retrieves details for a specific role by ID
+     * Access: Admin only
+     ************************************************************************/
+    [Authorize(Policy = "AdminOnly")]
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetRole (Guid id) {
-        // find role with that id
+    public async Task<IActionResult> GetRole(Guid id)
+    {
+        /*********************************************************************
+         * STEP 1: Find role by ID
+         ********************************************************************/
         var role = await _dbContext.Roles.FindAsync(id);
 
-        // check if the role is found
-        if (role is null) {
-            return NotFound(new {ok=false, message="Role not found"});
+        /*********************************************************************
+         * STEP 2: Validate role existence
+         ********************************************************************/
+        if (role is null)
+        {
+            return NotFound(new { ok = false, message = "Role not found" });
         }
 
-        // return response
-        return Ok(new {ok=true, data=role});
+        /*********************************************************************
+         * STEP 3: Return role data
+         ********************************************************************/
+        return Ok(new { ok = true, data = role });
     }
 
-    // create role
+    /*************************************************************************
+     * CREATE ROLE - POST api/roles
+     * Creates a new role in the system
+     * Access: Admin only
+     ************************************************************************/
+    [Authorize(Policy = "AdminOnly")]
     [HttpPost]
     public async Task<IActionResult> CreateRole(CreateRoleDto roleDto)
     {
+        /*********************************************************************
+         * STEP 1: Create new role object
+         ********************************************************************/
         var role = new Role
         {
             Name = roleDto.Name,
             Description = roleDto.Description
         };
 
-        // add the new object to the db context
+        /*********************************************************************
+         * STEP 2: Add role to database context
+         ********************************************************************/
         _dbContext.Roles.Add(role);
 
-        // save the changes
+        /*********************************************************************
+         * STEP 3: Save changes to database
+         ********************************************************************/
         await _dbContext.SaveChangesAsync();
 
-        // return a response
+        /*********************************************************************
+         * STEP 4: Return success response
+         ********************************************************************/
         return StatusCode(201, new { ok = true, message = "Role created successfully" });
     }
 
-    // update
+    /*************************************************************************
+     * UPDATE ROLE - PUT api/roles/{id}
+     * Modifies an existing role's details
+     * Access: Admin only
+     ************************************************************************/
+    [Authorize(Policy = "AdminOnly")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateRole(Guid id, UpdateRoleDto payload)
     {
-        // find a role with the params id
+        /*********************************************************************
+         * STEP 1: Find role by ID
+         ********************************************************************/
         var role = await _dbContext.Roles.FindAsync(id);
+
+        /*********************************************************************
+         * STEP 2: Validate role existence
+         ********************************************************************/
         if (role is null)
         {
-            return NotFound(new {ok=false, message=$"Role with id: {id} not found"}); // NotFound == status code of 404
+            return NotFound(new { ok = false, message = $"Role with id: {id} not found" });
         }
-        
-        // validate the payload with dto
-        if (!string.IsNullOrWhiteSpace(payload.Name)) {
+
+        /*********************************************************************
+         * STEP 3: Apply partial updates to role
+         ********************************************************************/
+        if (!string.IsNullOrWhiteSpace(payload.Name))
+        {
             role.Name = payload.Name;
         }
-        if (!string.IsNullOrWhiteSpace(payload.Description)) {
+
+        if (!string.IsNullOrWhiteSpace(payload.Description))
+        {
             role.Description = payload.Description;
         }
-        // update the time in the database - ef and sql do not handle this by default
+
+        /*********************************************************************
+         * STEP 4: Update timestamp
+         ********************************************************************/
         role.UpdatedAt = DateTime.UtcNow;
 
+        /*********************************************************************
+         * STEP 5: Save changes to database
+         ********************************************************************/
         await _dbContext.SaveChangesAsync();
-        return Ok(new {ok=true, message="Role updated successfully"});
+
+        /*********************************************************************
+         * STEP 6: Return success response
+         ********************************************************************/
+        return Ok(new { ok = true, message = "Role updated successfully" });
     }
 
-    // delete role
-    [HttpDelete("{id}")] // HTTP Method 
-    // IActionResult is an ASP.NET Interface that allows or enable us to return our responses with status
-    public async Task<IActionResult> DeleteRole (Guid id) {
-        // find the role to delete
+    /*************************************************************************
+     * DELETE ROLE - DELETE api/roles/{id}
+     * Removes a role from the system
+     * Access: Admin only
+     ************************************************************************/
+    [Authorize(Policy = "AdminOnly")]
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteRole(Guid id)
+    {
+        /*********************************************************************
+         * STEP 1: Find role by ID
+         ********************************************************************/
         var role = await _dbContext.Roles.FindAsync(id);
 
-        // condition: check if the role was found
-        if (role is null) {
-            return NotFound(new {ok = false, message=$"Role with id: ${id} not found" });
+        /*********************************************************************
+         * STEP 2: Validate role existence
+         ********************************************************************/
+        if (role is null)
+        {
+            return NotFound(new { ok = false, message = $"Role with id: {id} not found" });
         }
 
-        // delete the role from your db
+        /*********************************************************************
+         * STEP 3: Remove role from database context
+         ********************************************************************/
         _dbContext.Roles.Remove(role);
 
-        // save the delete changes
+        /*********************************************************************
+         * STEP 4: Save changes to database
+         ********************************************************************/
         await _dbContext.SaveChangesAsync();
 
-        return Ok(new {ok=true, message="Role deleted successfully"});
+        /*********************************************************************
+         * STEP 5: Return success response
+         ********************************************************************/
+        return Ok(new { ok = true, message = "Role deleted successfully" });
     }
-
 }
-
-
-
-// IActionResult, this is the return type that allows you to use methods like
-// - OK -> 200
-// - NotFound -> 404
-// - StatusCode - > here you specify the status code
-// - Unauthorized -> 401
-// - Created -> 201 (but this takes in two arguments)
-// - NoContent -> 204
-// - BadRequest -> 400
-// - Forbid - 403
