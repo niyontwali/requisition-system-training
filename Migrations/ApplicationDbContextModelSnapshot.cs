@@ -28,6 +28,10 @@ namespace RequisitionSystem.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BarCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -138,6 +142,8 @@ namespace RequisitionSystem.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AuthorId");
+
                     b.HasIndex("RequisitionId");
 
                     b.ToTable("RequisitionRemarks");
@@ -232,11 +238,19 @@ namespace RequisitionSystem.Migrations
 
             modelBuilder.Entity("RequisitionSystem.Models.RequisitionRemark", b =>
                 {
+                    b.HasOne("RequisitionSystem.Models.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("RequisitionSystem.Models.Requisition", null)
                         .WithMany("RequisitionRemarks")
                         .HasForeignKey("RequisitionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Author");
                 });
 
             modelBuilder.Entity("RequisitionSystem.Models.User", b =>

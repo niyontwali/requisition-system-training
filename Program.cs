@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -8,46 +7,76 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RequisitionSystem.Data;
 using RequisitionSystem.Policies;
+using Serilog;
+using Serilog.Events;
 
-// creation of a builder object
+/*****************************************************************************
+ * APPLICATION INITIALIZATION
+ ****************************************************************************/
 var builder = WebApplication.CreateBuilder(args);
 
-// Get your variable keys from app settings
+/*****************************************************************************
+ * CONFIGURATION SETUP
+ ****************************************************************************/
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-/**********************************************
-Configuring services
-************************************************/
-/**********************************************
-1. Adds a controller service for mvc
-This will allow us to use controller action, 
-model binding, validation using data annotations 
-specified in models, json formating for request and response bodies
-************************************************/
+/*****************************************************************************
+ * LOGGING CONFIGURATION
+ ****************************************************************************/
+var logFolder = Path.Combine(Directory.GetCurrentDirectory(), "Logs");
+if (!Directory.Exists(logFolder))
+{
+    Directory.CreateDirectory(logFolder);
+}
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.Console()
+    .WriteTo.File(
+        Path.Combine(logFolder, "system-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .Enrich.FromLogContext()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+    .CreateLogger();
+
+builder.Host.UseSerilog();
+
+/*****************************************************************************
+ * SERVICE CONFIGURATION
+ ****************************************************************************/
+
+/*****************************************************************************
+ * 1. CONTROLLER SERVICE CONFIGURATION
+ *    Enables MVC controllers with features like model binding, 
+ *    validation, and JSON formatting
+ ****************************************************************************/
 builder.Services.AddControllers();
 
-// TO make sure that error stacks related to Identity is shown
+/*****************************************************************************
+ * SECURITY CONFIGURATION
+ * Enables detailed identity model error messages for debugging
+ ****************************************************************************/
 IdentityModelEventSource.ShowPII = true;
 
-
-/**********************************************
- 2. Adds an endpoint api explorer that will allow 
- the app to discover API Endpoints. This is used
- by swagger to list available routes
-************************************************/
+/*****************************************************************************
+ * 2. API ENDPOINT EXPLORER SERVICE
+ *    Enables discovery of API endpoints for documentation tools
+ ****************************************************************************/
 builder.Services.AddEndpointsApiExplorer();
 
-/**********************************************
-3. Adds a service to the builder to enable automatic 
-generation of API documentation using swagger and 
-provides a UI to test your endpoints
-************************************************/
-// builder.Services.AddSwaggerGen();
+/*****************************************************************************
+ * 3. SWAGGER DOCUMENTATION SERVICE
+ *    Configures API documentation generation with JWT support
+ ****************************************************************************/
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo { Title = "Requisition API End Points", Version = "v1" });
 
-    // Add JWT Bearer definition
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -58,7 +87,6 @@ builder.Services.AddSwaggerGen(options =>
         Description = "JWT Authorization header using the Bearer scheme."
     });
 
-    // Make sure all endpoints require authorization by default
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -74,28 +102,23 @@ builder.Services.AddSwaggerGen(options =>
         }
     });
 });
-/************************************************************************
-    4. AddDbContext
-    Register the application's DbContext with SQL Server as the database provider.
-    This sets up Entity Framework Core to connect to a SQL Server database using the
-    connection string defined in appsettings.json under "DefaultConnection".
-    
-    The 'EnableRetryOnFailure()' method adds resiliency by automatically retrying 
-    failed database operations (e.g., due to transient network issues).
 
-    => check on lambda functions (Assignment)
-**********************************************************************/
+/*****************************************************************************
+ * 4. DATABASE CONTEXT CONFIGURATION
+ *    Registers the application's DbContext with SQL Server provider
+ *    Includes retry logic for transient failures
+ ****************************************************************************/
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
+        connectionString,
         sqlOptions => sqlOptions.EnableRetryOnFailure()
     )
 );
 
-/*********************************************************************
-5. Modification of the default Authentication Service
-************************************************************************/
-
+/*****************************************************************************
+ * 5. AUTHENTICATION SERVICE CONFIGURATION
+ *    Sets up JWT Bearer token authentication with validation parameters
+ ****************************************************************************/
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -114,25 +137,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-/*********************************************************************
-6. Authorization Policies Configuration
-************************************************************************/
+/*****************************************************************************
+ * 6. AUTHORIZATION POLICIES CONFIGURATION
+ *    Defines custom authorization policies and their handlers
+ ****************************************************************************/
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AdminOnly", policy => policy.Requirements.Add(new AdminPolicy()))
     .AddPolicy("EmployeeAccess", policy => policy.Requirements.Add(new EmployeePolicy()));
 
-// Register the authorization handlers
 builder.Services.AddScoped<IAuthorizationHandler, AdminPolicyHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, EmployeePolicyHandler>();
-
-// Custom authorization middleware result handler
 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, CustomAuthorizationMiddlewareResultHandler>();
 
-
-/*********************************************************************
-5. Handle cors. This adds CORA (Cross-Orgin Resource Sharing)
-************************************************************************/
-
+/*****************************************************************************
+ * 7. CORS CONFIGURATION
+ *    Defines cross-origin resource sharing policies
+ ****************************************************************************/
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -143,55 +163,63 @@ builder.Services.AddCors(options =>
     });
 
     /*
-     Allow specific origin, the name of this policy is called Restricted. Uncomment the codes for restricted cors policy
-     options.AddPolicy("Restricted", policy =>
-     {
-         policy.WithOrigins("https://yourfrontend.com", "https://admin.yoursite.com") // Trusted domains
-               .AllowAnyHeader()
-               .AllowAnyMethod();
-     });
- */
+     * EXAMPLE OF RESTRICTED CORS POLICY
+     * Uncomment to use specific trusted domains only
+     */
+    // options.AddPolicy("Restricted", policy =>
+    // {
+    //     policy.WithOrigins("https://yourfrontend.com", "https://admin.yoursite.com")
+    //           .AllowAnyHeader()
+    //           .AllowAnyMethod();
+    // });
 });
 
-/***************************
-Build the application after all
-the services are added.
-******************************/
+/*****************************************************************************
+ * APPLICATION BUILDING
+ ****************************************************************************/
 var app = builder.Build();
 
-// if the app is running in the devlopment environment use swagger other dont
+/*****************************************************************************
+ * MIDDLEWARE PIPELINE CONFIGURATION
+ ****************************************************************************/
+
+/*****************************************************************************
+ * DEVELOPMENT ENVIRONMENT CONFIGURATION
+ *    Enables developer exception page and Swagger UI
+ ****************************************************************************/
 if (app.Environment.IsDevelopment())
 {
-    // Add development exception error handling to display detailed errors for debugging purpose
     app.UseDeveloperExceptionPage();
-
-    // Enabale or use swagger setups
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 else
 {
-    // For production handle exceptions by redirecting to a custom error handling page
     app.UseExceptionHandler("/error");
 }
 
-// Redirect HTTP requests to HTTPS
+/*****************************************************************************
+ * PRODUCTION MIDDLEWARE
+ *    HTTPS redirection and security headers
+ ****************************************************************************/
 app.UseHttpsRedirection();
 
-
-// enable routing
+/*****************************************************************************
+ * ROUTING AND SECURITY MIDDLEWARE
+ *    Configures request pipeline processing order
+ ****************************************************************************/
 app.UseRouting();
-
-// use or enable our set cors
-app.UseCors();
-
-// enable authentication middleware
+app.UseCors("AllowAll"); // (Change to "Restricted" for production environments with restricted CORS policy)
 app.UseAuthentication();
-
-// enable authoriza tion
 app.UseAuthorization();
 
-// map the atrribute-routed controllers to the app
+/*****************************************************************************
+ * ENDPOINT CONFIGURATION
+ *    Maps controller routes
+ ****************************************************************************/
 app.MapControllers();
 
+/*****************************************************************************
+ * APPLICATION EXECUTION
+ ****************************************************************************/
 app.Run();
