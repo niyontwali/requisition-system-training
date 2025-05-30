@@ -8,14 +8,22 @@ using RequisitionSystem.Data;
 using RequisitionSystem.DTOs;
 using RequisitionSystem.Models;
 
+/*****************************************************************************
+ * REQUISITIONS CONTROLLER
+ * Handles all operations related to requisition management including
+ * creation, retrieval, updating, and status management
+ ****************************************************************************/
 [ApiController]
 [Route("api/requisitions")]
 public class RequisitionsController(ApplicationDbContext dbContext) : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext = dbContext;
 
-
-    // Get All Requisitions
+    /*************************************************************************
+     * GET ALL REQUISITIONS - GET api/requisitions
+     * Retrieves complete list of requisitions with all related data
+     ************************************************************************/
+    [Authorize]
     [HttpGet]
     public async Task<IActionResult> GetRequisitions()
     {
@@ -53,9 +61,7 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
                     {
                         Name = rr.Author.FullName,
                         Email = rr.Author.Email,
-
                     },
-
                 }).ToList(),
             })
             .ToListAsync();
@@ -63,7 +69,11 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
         return Ok(new { ok = true, data = requisitions });
     }
 
-    // Get a single requisition
+    /*************************************************************************
+     * GET SINGLE REQUISITION - GET api/requisitions/{id}
+     * Retrieves detailed information for a specific requisition
+     ************************************************************************/
+    [Authorize]
     [HttpGet("{id}")]
     public async Task<IActionResult> GetRequisition(Guid id)
     {
@@ -103,7 +113,6 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
                         Name = rr.Author.FullName,
                         Email = rr.Author.Email,
                     } : null,
-
                 }).ToList(),
             })
             .FirstOrDefaultAsync();
@@ -116,26 +125,34 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
         return Ok(new { ok = true, data = requisition });
     }
 
-    [Authorize(Policy = "AdminOnly")]
-    // Create Requisition
+    /*************************************************************************
+     * CREATE REQUISITION - POST api/requisitions
+     * Creates a new requisition with associated items (Admin only)
+     ************************************************************************/
+    [Authorize]
     [HttpPost]
     public async Task<IActionResult> CreateRequisition(CreateRequisitionDt0 request)
     {
-
+        /*********************************************************************
+         * STEP 1: Validate authenticated user
+         ********************************************************************/
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
         if (userId is null)
         {
             return Unauthorized(new { ok = false, message = "User not authenticated" });
         }
 
-        // step 2. Check if the items are not empty
+        /*********************************************************************
+         * STEP 2: Validate requisition items
+         ********************************************************************/
         if (request.Items == null || request.Items.Count == 0)
         {
             return BadRequest(new { ok = false, message = "Items should not be null or empty" });
         }
 
-        // step 3. Validate that all materials exist
+        /*********************************************************************
+         * STEP 3: Validate material existence
+         ********************************************************************/
         var materialIds = request.Items.Select(i => i.MaterialId).ToList();
         var existingMaterials = await _dbContext.Materials
             .Where(m => materialIds.Contains(m.Id))
@@ -148,7 +165,9 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
             return BadRequest(new { ok = false, message = $"Materials not found: {string.Join(", ", missingMaterials)}" });
         }
 
-        // step 4. Creation of requisition
+        /*********************************************************************
+         * STEP 4: Create new requisition
+         ********************************************************************/
         var newRequisition = new Requisition
         {
             RequestedUserId = request.RequestedUserId,
@@ -156,11 +175,15 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
             Description = request.Description
         };
 
-        // step 5. Add new requisition to the context and save changes
+        /*********************************************************************
+         * STEP 5: Save requisition to database
+         ********************************************************************/
         _dbContext.Requisitions.Add(newRequisition);
         await _dbContext.SaveChangesAsync();
 
-        // step 6. Loop through the items from the request
+        /*********************************************************************
+         * STEP 6: Create requisition items
+         ********************************************************************/
         var requisitionItems = request.Items.Select(item => new RequisitionItem
         {
             MaterialId = item.MaterialId,
@@ -168,18 +191,29 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
             RequisitionId = newRequisition.Id
         }).ToList();
 
-        // step 7. Add bulk items save the changes
+        /*********************************************************************
+         * STEP 7: Save items to database
+         ********************************************************************/
         _dbContext.RequisitionItems.AddRange(requisitionItems);
         await _dbContext.SaveChangesAsync();
 
-        // step 8: Return a meaningful message with the created requisition ID
+        /*********************************************************************
+         * STEP 8: Return success response
+         ********************************************************************/
         return StatusCode(201, new { ok = true, message = "Requisition submitted successfully", requisitionId = newRequisition.Id });
     }
 
-    // Update Requisition
+    /*************************************************************************
+     * UPDATE REQUISITION - PUT api/requisitions/{id}
+     * Modifies an existing requisition (limited to certain statuses)
+     ************************************************************************/
+    [Authorize]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateRequisition(Guid id, UpdateRequisitionDto requisitionDto)
     {
+        /*********************************************************************
+         * STEP 1: Retrieve and validate requisition
+         ********************************************************************/
         var requisition = await _dbContext.Requisitions
             .Include(r => r.RequisitionItems)
             .FirstOrDefaultAsync(r => r.Id == id);
@@ -189,13 +223,17 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
             return NotFound(new { ok = false, message = $"Requisition with id: {id} not found" });
         }
 
-        // Only allow updates if status is Pending or NeedsModification
+        /*********************************************************************
+         * STEP 2: Validate requisition status
+         ********************************************************************/
         if (requisition.Status == "Approved" || requisition.Status == "Rejected")
         {
             return BadRequest(new { ok = false, message = "Cannot update approved or rejected requisitions" });
         }
 
-        // Update fields if provided
+        /*********************************************************************
+         * STEP 3: Update basic fields
+         ********************************************************************/
         if (!string.IsNullOrWhiteSpace(requisitionDto.Description))
         {
             requisition.Description = requisitionDto.Description;
@@ -206,13 +244,15 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
             requisition.Status = requisitionDto.Status;
         }
 
-        // Update items if provided
+        /*********************************************************************
+         * STEP 4: Handle items update if provided
+         ********************************************************************/
         if (requisitionDto.Items != null && requisitionDto.Items.Any())
         {
             // Remove existing items
             _dbContext.RequisitionItems.RemoveRange(requisition.RequisitionItems);
 
-            // Validate that all materials exist
+            // Validate new materials
             var materialIds = requisitionDto.Items.Select(i => i.MaterialId).ToList();
             var existingMaterials = await _dbContext.Materials
                 .Where(m => materialIds.Contains(m.Id))
@@ -241,7 +281,11 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
         return Ok(new { ok = true, message = "Requisition updated successfully" });
     }
 
-    // Update Requisition Status (for approvers)
+    /*************************************************************************
+     * UPDATE REQUISITION STATUS - PATCH api/requisitions/{id}/status
+     * Allows approvers to change requisition status
+     ************************************************************************/
+    [Authorize(Policy = "AdminOnly")]
     [HttpPatch("{id}/status")]
     public async Task<IActionResult> UpdateRequisitionStatus(Guid id, UpdateRequisitionStatusDto statusDto)
     {
@@ -257,10 +301,17 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
         return Ok(new { ok = true, message = "Requisition status updated successfully" });
     }
 
-    // Delete Requisition
+    /*************************************************************************
+     * DELETE REQUISITION - DELETE api/requisitions/{id}
+     * Removes a requisition and all related data (only for pending status)
+     ************************************************************************/
+    [Authorize]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteRequisition(Guid id)
     {
+        /*********************************************************************
+         * STEP 1: Retrieve and validate requisition
+         ********************************************************************/
         var requisition = await _dbContext.Requisitions
             .Include(r => r.RequisitionItems)
             .Include(r => r.RequisitionRemarks)
@@ -271,13 +322,17 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
             return NotFound(new { ok = false, message = $"Requisition with id: {id} not found" });
         }
 
-        // Only allow deletion if status is Pending
+        /*********************************************************************
+         * STEP 2: Validate requisition status
+         ********************************************************************/
         if (requisition.Status != "Pending")
         {
             return BadRequest(new { ok = false, message = "Only pending requisitions can be deleted" });
         }
 
-        // Remove related items and remarks first
+        /*********************************************************************
+         * STEP 3: Remove all related data
+         ********************************************************************/
         _dbContext.RequisitionItems.RemoveRange(requisition.RequisitionItems);
         _dbContext.RequisitionRemarks.RemoveRange(requisition.RequisitionRemarks);
         _dbContext.Requisitions.Remove(requisition);
@@ -286,16 +341,25 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
         return Ok(new { ok = true, message = "Requisition deleted successfully" });
     }
 
-    // Get Requisitions by User
+    /*************************************************************************
+     * GET REQUISITIONS BY USER - GET api/requisitions/user/{userId}
+     * Retrieves all requisitions for a specific user
+     ************************************************************************/
     [HttpGet("user/{userId}")]
     public async Task<IActionResult> GetRequisitionsByUser(Guid userId)
     {
+        /*********************************************************************
+         * STEP 1: Validate user existence
+         ********************************************************************/
         var userExists = await _dbContext.Users.AnyAsync(u => u.Id == userId);
         if (!userExists)
         {
             return NotFound(new { ok = false, message = "User not found" });
         }
 
+        /*********************************************************************
+         * STEP 2: Retrieve user requisitions
+         ********************************************************************/
         var requisitions = await _dbContext.Requisitions
             .Include(r => r.RequestedUser)
             .Include(r => r.RequisitionItems)
@@ -320,7 +384,6 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
                         Name = ri.Material!.Name,
                         Description = ri.Material.Description!,
                         Unit = ri.Material.Unit,
-
                     },
                     Quantity = ri.Quantity,
                 }).ToList(),
@@ -332,9 +395,7 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
                     {
                         Name = rr.Author.FullName,
                         Email = rr.Author.Email,
-
                     },
-
                 }).ToList(),
             })
             .ToListAsync();
@@ -342,16 +403,26 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
         return Ok(new { ok = true, data = requisitions });
     }
 
-    // Get Requisitions by Status
+    /*************************************************************************
+     * GET REQUISITIONS BY STATUS - GET api/requisitions/status/{status}
+     * Retrieves all requisitions with a specific status
+     ************************************************************************/
+    [Authorize]
     [HttpGet("status/{status}")]
     public async Task<IActionResult> GetRequisitionsByStatus(string status)
     {
+        /*********************************************************************
+         * STEP 1: Validate status
+         ********************************************************************/
         var validStatuses = new[] { "Pending", "Approved", "Rejected", "NeedsModification" };
         if (!validStatuses.Contains(status))
         {
             return BadRequest(new { ok = false, message = "Invalid status. Valid statuses are: Pending, Approved, Rejected, NeedsModification" });
         }
 
+        /*********************************************************************
+         * STEP 2: Retrieve filtered requisitions
+         ********************************************************************/
         var requisitions = await _dbContext.Requisitions
             .Include(r => r.RequestedUser)
             .Include(r => r.RequisitionItems)
@@ -366,7 +437,6 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
                 {
                     Name = r.RequestedUser!.FullName,
                     Email = r.RequestedUser.Email,
-
                 },
                 Status = r.Status,
                 Description = r.Description,
@@ -377,7 +447,6 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
                         Name = ri.Material!.Name,
                         Description = ri.Material.Description ?? "No Description available",
                         Unit = ri.Material.Unit,
-
                     },
                     Quantity = ri.Quantity,
                 }).ToList(),
@@ -389,7 +458,6 @@ public class RequisitionsController(ApplicationDbContext dbContext) : Controller
                     {
                         Name = rr.Author.FullName,
                         Email = rr.Author.Email,
-
                     },
                 }).ToList(),
             })
